@@ -1,0 +1,158 @@
+const http = require('http');
+const fs = require('fs');
+const con = require("./DBConnection");
+
+http.createServer(function (req, res) {
+    console.log("This is the correct file");
+    console.log("The Server received a request");
+    console.log(req.method);
+    console.log(req.url);
+ 
+
+    let path = req.url.replace("/individualproject2021", "");
+    console.log("The Path is ");
+    console.log(path);
+    
+    
+    if (req.method == "POST" &&  (path == '/insert' || path == '/insert/'))
+   
+
+    {
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/plain');
+        let body = '';
+        req.on('data', function(data){
+            body += data;
+        });
+
+        req.on('end', function(data){
+            let obj = JSON.parse(body);
+            console.log("The Quote Source: " + obj.quoteSource);
+            console.log("The Quote Body: " + obj.quoteBody);
+            console.log('the body is .....');
+            console.log(body);
+
+            let conn = con.getConnection();
+
+            conn.query('INSERT INTO alielhaj_quotes.quotes (quotes.quoteSource, quotes.quoteBody) VALUES (?,?)', [obj.quoteSource,obj.quoteBody], function (error, results, fields){
+            if (error) throw error;
+
+            conn.end();
+            res.end(JSON.stringify({worked: results.affectedRows == 1}));
+        });
+
+
+
+        });
+    }
+
+    else if(req.method == 'DELETE' && path.startsWith('/quote/'))
+    {
+        // get the id from the request
+        let parts = path.split('/'); 
+
+
+
+        if(parts.length > 2)
+        {
+            let id = parts[2];
+            let conn = con.getConnection();
+
+            conn.query("DELETE FROM alielhaj_quotes.quotes WHERE ID = ?", [id], (err, result) => {
+
+                let response = 
+                {
+                    worked: false
+                };
+                if(!err) 
+                {
+                   response.worked = result.affectedRows == 1;
+                }
+                console.log(result);
+                res.end(JSON.stringify(response));
+            });
+        }
+    }
+    else if(req.method == 'GET' && path.startsWith('/edit/'))
+    {
+
+        // get the id from the request
+        let parts = path.split('/'); 
+
+        if(parts.length > 2)
+        {
+            let id = parts[2];
+            let conn = con.getConnection();
+
+            conn.query("SELECT * FROM alielhaj_quotes.quotes WHERE ID = ?", [id], (err, result) => 
+            {
+                res.setHeader('Content-Type', 'text/html');
+                if(err) 
+                {
+                    res.statusCode = 404;
+                    res.end();
+                    return;
+                }
+                res.setHeader('quote_info', result);
+                fs.createReadStream("./edit.html").pipe(res);
+                return;
+            });
+        }
+    }
+    ///home/test
+    else if(req.method == 'GET' && (path == '/home' || path == '/home/'))
+    {
+        console.log("I arrived to the get request");
+        res.writeHead(200, {"Content-Type": "application/json"});
+        let conn = con.getConnection();
+        conn.query('SELECT * FROM alielhaj_quotes.quotes', function (error, results, fields){
+            if (error) throw error;
+            let quotes = JSON.stringify(results);
+            res.end(quotes);
+            //console.log(quotes);
+        });
+        conn.end();
+    } else if(req.method == 'GET') {
+        let parts = path.split('/');
+
+          
+        let filename = parts[parts.length - 1];
+
+        if(!filename) {
+            filename = 'index';
+        }
+        //functions.js function.fafi.js.css
+        let allowed = ['js','css','ico', 'jpg','html'];
+
+        let fileParts = filename.split('.');
+        let ext = '.html';
+        if(fileParts.length == 2 && allowed.includes(fileParts[1])) {
+            ext =  '.' + fileParts[1];
+            filename = fileParts[0];
+        }
+
+        let stream = fs.createReadStream('./'+filename + ext)
+        stream.on('error', err => {
+            res.statusCode = 404;
+            res.end('Not found!');
+        });
+
+        stream.on('open', () => {
+            res.statusCode = 200;
+
+            let contentType = 'text/html';
+
+            if(ext == '.js') {
+                contentType = 'text/javascript';
+            } else if (ext == '.css') 
+            {
+                contentType = 'text/css';
+            } 
+
+            res.setHeader('Content-Type', contentType);
+            stream.pipe(res);
+        });
+        
+      
+    }
+  }).listen(8888);
